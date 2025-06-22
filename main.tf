@@ -74,17 +74,22 @@ resource "mongodbatlas_cloud_backup_schedule" "this" {
     zone_id            = mongodbatlas_advanced_cluster.this.replication_specs.*.zone_id[0]
   }
 
-  // This will now add the desired policy items to the existing mongodbatlas_cloud_backup_schedule resource
-  policy_item_daily {
-    retention_value    = var.backup_policies["daily"].retention_value
-    retention_unit     = var.backup_policies["daily"].retention_unit
-    frequency_interval = var.backup_policies["daily"].frequency_interval
+  dynamic "policy_item_daily" {
+    for_each = contains(keys(var.backup_policies), "daily") ? [var.backup_policies["daily"]] : []
+    content {
+      retention_value    = policy_item_daily.value.retention_value
+      retention_unit     = policy_item_daily.value.retention_unit
+      frequency_interval = policy_item_daily.value.frequency_interval
+    }
   }
 
-  policy_item_hourly {
-    frequency_interval = var.backup_policies["hourly"].frequency_interval
-    retention_value    = var.backup_policies["hourly"].retention_value
-    retention_unit     = var.backup_policies["hourly"].retention_unit
+  dynamic "policy_item_hourly" {
+    for_each = contains(keys(var.backup_policies), "hourly") ? [var.backup_policies["hourly"]] : []
+    content {
+      retention_value    = try(policy_item_hourly.value.retention_value, null)
+      retention_unit     = try(policy_item_hourly.value.retention_unit, null)
+      frequency_interval = try(policy_item_hourly.value.frequency_interval, null)
+    }
   }
 }
 

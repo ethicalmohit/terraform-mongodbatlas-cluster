@@ -42,7 +42,9 @@ See the [example](./example/main.tf) directory for a complete usage example.
 
 ### backup_policies
 
-The `backup_policies` variable configures daily and hourly backup policies. Example:
+The `backup_policies` variable configures backup policies. You can specify any combination of supported policy types (e.g., `daily`, `hourly`). If a policy type is omitted, it will not be created.
+
+Example with both daily and hourly:
 
 ```hcl
 backup_policies = {
@@ -58,6 +60,20 @@ backup_policies = {
   }
 }
 ```
+
+Example with only daily:
+
+```hcl
+backup_policies = {
+  daily = {
+    retention_value    = 10
+    retention_unit     = "days"
+    frequency_interval = 1
+  }
+}
+```
+
+If you omit `hourly`, no hourly backup policy will be created.
 
 ## Outputs
 
