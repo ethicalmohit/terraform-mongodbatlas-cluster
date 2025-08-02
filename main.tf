@@ -32,7 +32,22 @@ resource "mongodbatlas_advanced_cluster" "this" {
         instance_size   = var.mongodb_atlas_config["instance_size"]
         node_count      = 0
       }
+
+      read_only_specs {
+        disk_iops       = 3000
+        ebs_volume_type = null
+        instance_size   = var.mongodb_atlas_config["instance_size"]
+        node_count      = 0
+      }
     }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      replication_specs[0].region_configs[0].read_only_specs[0].disk_size_gb,
+      replication_specs[0].region_configs[0].analytics_specs[0].disk_size_gb,
+      replication_specs[0].region_configs[0].electable_specs[0].disk_size_gb,
+    ]
   }
 }
 
