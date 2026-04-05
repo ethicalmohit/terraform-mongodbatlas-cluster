@@ -8,113 +8,134 @@ variable "name" {
   type        = string
 }
 
-variable "mongo_db_major_version" {
-  description = "Version of the MongoDB cluster"
-  type        = string
-}
-
-variable "endpoint_service_id" {
-  description = "Unique identifier of the interface endpoint created in your VPC with the AWS, AZURE or GCP resource"
-  type        = string
-}
-
-variable "mongodb_atlas_public_key" {
-  description = "The public key for the MongoDB Atlas API"
-  type        = string
-}
-
-variable "mongodb_atlas_private_key" {
-  description = "The private key for the MongoDB Atlas API"
-  type        = string
-}
-
-variable "region_code" {
-  description = "The region code for the MongoDB Atlas Cluster"
-  type        = string
-}
-
 variable "mongodb_version" {
-  default = "8.0"
-}
+  description = "Major version of MongoDB to deploy (6.0, 7.0, or 8.0)"
+  type        = string
+  default     = "8.0"
 
-variable "mongodb_atlas_config" {
-  description = "Configuration settings for MongoDB Atlas cluster"
-  type = object({
-    compute_scaling_enabled    = optional(bool, true)
-    compute_scale_down_enabled = optional(bool, true)
-    disk_gb_scaling_enabled    = optional(bool, true)
-    instance_size              = optional(string, "M10")
-  })
-  default = {
-    compute_scaling_enabled    = true
-    compute_scale_down_enabled = true
-    disk_gb_scaling_enabled    = true
-    instance_size              = "M10"
+  validation {
+    condition     = contains(["6.0", "7.0", "8.0"], var.mongodb_version)
+    error_message = "Supported MongoDB versions are 6.0, 7.0, and 8.0."
   }
 }
 
 variable "provider_name" {
-  description = "The cloud provider name for the MongoDB Atlas cluster (e.g., AWS, AZURE, GCP)"
+  description = "Cloud provider for the cluster (AWS, AZURE, or GCP)"
   type        = string
   default     = "AWS"
+
+  validation {
+    condition     = contains(["AWS", "AZURE", "GCP"], var.provider_name)
+    error_message = "Supported cloud providers are AWS, AZURE, and GCP."
+  }
 }
 
 variable "region_name" {
-  description = "The region name for the MongoDB Atlas cluster (e.g., AP_SOUTH_1)"
+  description = "Cloud provider region name for the cluster (e.g. AP_SOUTH_1 for AWS, INDIA_CENTRAL for Azure)"
   type        = string
   default     = "AP_SOUTH_1"
 }
 
-variable "backup_copy_region_name" {
-  description = "The region name for backup copy in the MongoDB Atlas Cloud Backup Schedule (e.g., AP_SOUTHEAST_1)"
+variable "region_code" {
+  description = "Region code used for the PrivateLink endpoint (e.g. AP_SOUTH_1). Required when enable_privatelink = true."
   type        = string
-  default     = "AP_SOUTHEAST_1"
+  default     = null
 }
 
+variable "mongodb_atlas_config" {
+  description = "Configuration settings for the MongoDB Atlas cluster"
+  type = object({
+    compute_scaling_enabled    = optional(bool, true)
+    compute_scale_down_enabled = optional(bool, true)
+    compute_max_instance_size  = optional(string, "M40")
+    compute_min_instance_size  = optional(string, "M10")
+    disk_gb_scaling_enabled    = optional(bool, true)
+    ebs_volume_type            = optional(string, null)
+    instance_size              = optional(string, "M10")
+    node_count                 = optional(number, 3)
+    disk_iops                  = optional(number, 3000)
+  })
+  default = {}
+
+  validation {
+    condition     = var.mongodb_atlas_config.node_count % 2 != 0
+    error_message = "Node count must be an odd number (3, 5, 7, ...) as required by MongoDB replica sets."
+  }
+}
+
+# PrivateLink
+
+variable "enable_privatelink" {
+  description = "Whether to create a PrivateLink endpoint and service. Requires endpoint_service_id and region_code when true."
+  type        = bool
+  default     = false
+}
+
+variable "endpoint_service_id" {
+  description = "VPC endpoint service ID (AWS VPC endpoint, Azure Private Endpoint, or GCP endpoint). Required when enable_privatelink = true."
+  type        = string
+  default     = null
+}
+
+# Backup
+
 variable "enable_backup" {
-  description = "Whether to enable the MongoDB Atlas Cloud Backup Schedule. If false, backup resources will not be created."
+  description = "Whether to create a Cloud Backup Schedule. When false, no backup resources are created."
   type        = bool
   default     = true
 }
 
-variable "daily_retention_value" {
-  description = "Retention value for daily backup policy item."
-  type        = number
-  default     = 10
-}
-
-variable "daily_retention_unit" {
-  description = "Retention unit for daily backup policy item."
-  type        = string
-  default     = "days"
-}
-
-variable "daily_frequency_interval" {
-  description = "Frequency interval for daily backup policy item."
-  type        = number
-  default     = 1
-}
-
-variable "hourly_retention_value" {
-  description = "Retention value for hourly backup policy item."
+variable "restore_window_days" {
+  description = "Number of days back in time you can restore to with Continuous Cloud Backup."
   type        = number
   default     = 2
 }
 
-variable "hourly_retention_unit" {
-  description = "Retention unit for hourly backup policy item."
-  type        = string
-  default     = "days"
+variable "backup_reference_hour_of_day" {
+  description = "UTC hour of day (0–23) when Atlas starts the backup snapshot window."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.backup_reference_hour_of_day >= 0 && var.backup_reference_hour_of_day <= 23
+    error_message = "Backup reference hour must be between 0 and 23."
+  }
 }
 
-variable "hourly_frequency_interval" {
-  description = "Frequency interval for hourly backup policy item."
+variable "backup_reference_minute_of_hour" {
+  description = "UTC minute of the hour (0–59) when Atlas starts the backup snapshot window."
   type        = number
-  default     = 12
+  default     = 0
+
+  validation {
+    condition     = var.backup_reference_minute_of_hour >= 0 && var.backup_reference_minute_of_hour <= 59
+    error_message = "Backup reference minute must be between 0 and 59."
+  }
+}
+
+variable "enable_backup_copy" {
+  description = "Whether to copy backups to a secondary region. Requires backup_copy_region_name when true."
+  type        = bool
+  default     = false
+}
+
+variable "backup_copy_region_name" {
+  description = "Region to copy backups to. Required when enable_backup_copy = true."
+  type        = string
+  default     = null
 }
 
 variable "backup_policies" {
-  description = "Map of backup policy items. Example: { daily = { retention_value = 10, retention_unit = \"days\", frequency_interval = 1 }, hourly = { retention_value = 2, retention_unit = \"days\", frequency_interval = 12 } }"
+  description = <<-EOT
+    Map of backup policy items by frequency type. Supported keys: hourly, daily, weekly, monthly.
+    Omitting a key means that policy type will not be created.
+
+    Example:
+    {
+      daily  = { retention_value = 10, retention_unit = "days", frequency_interval = 1 }
+      hourly = { retention_value = 2,  retention_unit = "days", frequency_interval = 12 }
+    }
+  EOT
   type = map(object({
     retention_value    = number
     retention_unit     = string
@@ -133,4 +154,3 @@ variable "backup_policies" {
     }
   }
 }
-

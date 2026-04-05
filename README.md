@@ -1,21 +1,120 @@
-# MongoDB Atlas Module
+# terraform-mongodbatlas-cluster
 
-This Terraform module provisions a MongoDB Atlas cluster with advanced configuration options, private endpoints, and backup policies.
+A Terraform module for provisioning a production-ready MongoDB Atlas cluster with optional PrivateLink and automated backup schedules.
 
 ## Features
 
-- Creates a MongoDB Atlas cluster with configurable settings
-- Supports AWS as the cloud provider
-- Configurable cluster size and region
-- Automatic backup and disk scaling enabled by default
-- Configurable MongoDB version
-- Configurable instance size
-- PrivateLink endpoint support with configurable region
-- Automated backup schedule with retention policies
+- Replica set cluster with configurable instance size, node count, and IOPS
+- Compute and disk auto-scaling
+- Optional PrivateLink endpoint (AWS, Azure, GCP)
+- Configurable Cloud Backup Schedule with hourly, daily, weekly, and monthly policies
+- Optional cross-region backup copy
+- Supports MongoDB 6.0, 7.0, and 8.0
+- Plan-time validation for provider name, MongoDB version, and node count
+
+## Authentication
+
+Configure the `mongodbatlas` provider in your root module. The provider reads credentials from environment variables by default — the recommended approach:
+
+```bash
+export MONGODB_ATLAS_PUBLIC_KEY="your-public-key"
+export MONGODB_ATLAS_PRIVATE_KEY="your-private-key"
+```
+
+```hcl
+provider "mongodbatlas" {}
+
+module "mongodb" {
+  source = "<ORG>/<NAME>/mongodbatlas"
+  # ...
+}
+```
+
+Or pass credentials explicitly:
+
+```hcl
+provider "mongodbatlas" {
+  public_key  = var.mongodb_atlas_public_key
+  private_key = var.mongodb_atlas_private_key
+}
+```
 
 ## Usage
 
-See the [example](./example/main.tf) directory for a complete usage example.
+### Minimal
+
+```hcl
+provider "mongodbatlas" {}
+
+module "mongodb" {
+  source = "<ORG>/<NAME>/mongodbatlas"
+
+  project_id = "your-atlas-project-id"
+  name       = "my-cluster"
+}
+```
+
+### With PrivateLink
+
+```hcl
+provider "mongodbatlas" {}
+
+module "mongodb" {
+  source = "<ORG>/<NAME>/mongodbatlas"
+
+  project_id  = "your-atlas-project-id"
+  name        = "my-cluster"
+  region_name = "AP_SOUTH_1"
+  region_code = "AP_SOUTH_1"
+
+  enable_privatelink  = true
+  endpoint_service_id = "vpce-svc-xxxxxxxxxxxxxxxxx"
+}
+```
+
+### With Custom Backup Policies
+
+```hcl
+provider "mongodbatlas" {}
+
+module "mongodb" {
+  source = "<ORG>/<NAME>/mongodbatlas"
+
+  project_id = "your-atlas-project-id"
+  name       = "my-cluster"
+
+  enable_backup       = true
+  restore_window_days = 7
+
+  backup_policies = {
+    hourly = {
+      retention_value    = 2
+      retention_unit     = "days"
+      frequency_interval = 6
+    }
+    daily = {
+      retention_value    = 14
+      retention_unit     = "days"
+      frequency_interval = 1
+    }
+    weekly = {
+      retention_value    = 4
+      retention_unit     = "weeks"
+      frequency_interval = 1
+    }
+    monthly = {
+      retention_value    = 12
+      retention_unit     = "months"
+      frequency_interval = 1
+    }
+  }
+
+  enable_backup_copy      = true
+  backup_copy_region_name = "AP_SOUTHEAST_1"
+}
+```
+
+See the [example](./example) directory for a complete runnable configuration.
 
 ## Inputs
 
@@ -23,28 +122,38 @@ See the [example](./example/main.tf) directory for a complete usage example.
 |------|-------------|------|---------|:--------:|
 | project_id | MongoDB Atlas project ID | `string` | n/a | yes |
 | name | Name of the MongoDB cluster | `string` | n/a | yes |
-| mongodb_version | Version of the MongoDB cluster | `string` | `"8.0"` | no |
-| region_code | The region code for the MongoDB Atlas Cluster | `string` | n/a | yes |
-| endpoint_service_id | Unique identifier of the interface endpoint | `string` | n/a | yes |
-| mongodb_atlas_public_key | The public key for the MongoDB Atlas API | `string` | n/a | yes |
-| mongodb_atlas_private_key | The private key for the MongoDB Atlas API | `string` | n/a | yes |
-| mongodb_atlas_config | Configuration settings for MongoDB Atlas cluster | `object` | See below | no |
-| backup_policies | Map of backup policy items for daily/hourly backups. See below. | `map(object)` | See below | no |
+| mongodb_version | MongoDB major version (6.0, 7.0, or 8.0) | `string` | `"8.0"` | no |
+| provider_name | Cloud provider (AWS, AZURE, or GCP) | `string` | `"AWS"` | no |
+| region_name | Cloud provider region name (e.g. AP_SOUTH_1) | `string` | `"AP_SOUTH_1"` | no |
+| mongodb_atlas_config | Cluster sizing and scaling settings (see below) | `object` | see below | no |
+| enable_privatelink | Create a PrivateLink endpoint and service | `bool` | `false` | no |
+| region_code | Region code for the PrivateLink endpoint | `string` | `null` | no |
+| endpoint_service_id | VPC endpoint service ID for PrivateLink | `string` | `null` | no |
+| enable_backup | Create a Cloud Backup Schedule | `bool` | `true` | no |
+| restore_window_days | Days back in time available for point-in-time restore | `number` | `2` | no |
+| backup_reference_hour_of_day | UTC hour (0–23) to start the backup window | `number` | `0` | no |
+| backup_reference_minute_of_hour | UTC minute (0–59) to start the backup window | `number` | `0` | no |
+| backup_policies | Map of backup policy items (hourly, daily, weekly, monthly) | `map(object)` | see below | no |
+| enable_backup_copy | Copy backups to a secondary region | `bool` | `false` | no |
+| backup_copy_region_name | Secondary region for backup copies | `string` | `null` | no |
 
 ### mongodb_atlas_config
 
 | Name | Description | Type | Default |
 |------|-------------|------|---------|
+| instance_size | Atlas instance size (e.g. M10, M20, M30) | `string` | `"M10"` |
+| node_count | Number of electable nodes — must be odd (3, 5, 7) | `number` | `3` |
+| disk_iops | Provisioned IOPS | `number` | `3000` |
+| ebs_volume_type | EBS volume type for AWS (STANDARD or PROVISIONED) | `string` | `null` |
 | compute_scaling_enabled | Enable compute auto-scaling | `bool` | `true` |
-| compute_scale_down_enabled | Enable compute scale down | `bool` | `true` |
+| compute_scale_down_enabled | Enable scale-down as part of compute auto-scaling | `bool` | `true` |
+| compute_max_instance_size | Maximum instance size for compute auto-scaling | `string` | `"M40"` |
+| compute_min_instance_size | Minimum instance size for compute scale-down | `string` | `"M10"` |
 | disk_gb_scaling_enabled | Enable disk auto-scaling | `bool` | `true` |
-| instance_size | Instance size (e.g., M10) | `string` | `"M10"` |
 
 ### backup_policies
 
-The `backup_policies` variable configures backup policies. You can specify any combination of supported policy types (e.g., `daily`, `hourly`). If a policy type is omitted, it will not be created.
-
-Example with both daily and hourly:
+Supported keys: `hourly`, `daily`, `weekly`, `monthly`. Omitting a key means that policy type is not created.
 
 ```hcl
 backup_policies = {
@@ -61,74 +170,52 @@ backup_policies = {
 }
 ```
 
-Example with only daily:
-
-```hcl
-backup_policies = {
-  daily = {
-    retention_value    = 10
-    retention_unit     = "days"
-    frequency_interval = 1
-  }
-}
-```
-
-If you omit `hourly`, no hourly backup policy will be created.
-
 ## Outputs
 
-The module will output the following:
-
-- Cluster ID
-- Cluster name
-- Connection string
-- Private endpoint information
-- Backup configuration details
-
-## Backup Configuration
-
-The module configures automated backups with the following settings:
-
-- Daily backups with 30-day retention
-- Hourly backups with 7-day retention
-- Backup window: 00:00 UTC
-- Restore window: 7 days
-- Cross-region backup copy to AP_SOUTH_2
-
-## Private Endpoint
-
-The module sets up a private endpoint with AWS with the following configuration:
-
-- Provider: AWS
-- Creation timeout: 30 minutes
-- Deletion timeout: 20 minutes
-
-## Notes
-
-- The cluster is configured as a replica set with 3 nodes
-- Default IOPS is set to 3000
-- Analytics nodes are disabled by default
-- The module uses AWS as the cloud provider
+| Name | Description | Sensitive |
+|------|-------------|-----------|
+| cluster_id | The ID of the MongoDB Atlas cluster | no |
+| cluster_name | The name of the MongoDB Atlas cluster | no |
+| cluster_state | The current state of the cluster | no |
+| cluster_type | The type of the cluster | no |
+| cluster_configuration | Summary of cluster configuration | no |
+| connection_strings | All connection strings for the cluster | yes |
+| mongo_uri | Standard SRV connection URI | yes |
+| mongo_uri_private | Private SRV connection URI | yes |
+| privatelink_endpoint_id | PrivateLink endpoint ID (null if disabled) | no |
+| privatelink_endpoint_private_link_id | PrivateLink service ID (null if disabled) | no |
+| privatelink_endpoint_service_id | PrivateLink endpoint service ID (null if disabled) | no |
+| backup_schedule_id | Cloud Backup Schedule ID (null if disabled) | no |
+| backup_schedule_details | Full backup schedule details (null if disabled) | yes |
 
 ## Requirements
 
-- Terraform >= 1.0.0
-- MongoDB Atlas account and API keys
-- AWS account (for cloud provider)
-- VPC endpoint service ID for PrivateLink
-
-## TODO
-- Add resources for Users, Projects, Organization, Backups, Snapshot, Config etc.
+| Name | Version |
+|------|---------|
+| Terraform | >= 1.0.0 |
+| mongodb/mongodbatlas | ~> 1.34.0 |
 
 ## Notes
-- To fetch private_link_id use below API. This is important to import resources.
+
+- The cluster type is fixed to `REPLICASET`. `node_count` must be an odd number — the module validates this at plan time.
+- `instance_size` and `disk_size_gb` are always in `lifecycle.ignore_changes`. When auto-scaling is enabled, Atlas manages these values and Terraform will not revert them. To resize manually, change the size via the Atlas UI or API, then update your Terraform config to match.
+- To import existing PrivateLink resources, fetch the `private_link_id` via the Atlas API:
 
 ```bash
-curl --user "public-api-key:private-api-key" \
+curl --user "public-key:private-key" \
   --digest \
-  --header "Accept: application/vnd.atlas.2025-03-12+json" -X GET https://cloud.mongodb.com/api/atlas/v2/groups/{PROJECT_ID}/privateEndpoint/AWS/endpointService
+  --header "Accept: application/vnd.atlas.2025-03-12+json" \
+  -X GET "https://cloud.mongodb.com/api/atlas/v2/groups/{PROJECT_ID}/privateEndpoint/AWS/endpointService"
 ```
+
+## TODO
+
+- Add support for multi-region replication specs
+- Add support for sharded clusters
+- Add resources for database users and roles
+- Add support for network access lists and IP allowlists
+- Add support for VPC peering
 
 ## License
 
-This module is licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+Apache License 2.0 — see [LICENSE](./LICENSE).

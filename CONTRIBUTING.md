@@ -8,7 +8,7 @@ Thank you for considering contributing to this Terraform module!
 2. **Make your changes** following the existing code style and best practices.
 3. **Test your changes** locally.
 4. **Open a Pull Request (PR)** with a clear description of your changes and the motivation behind them.
-5. Ensure your PR passes all GitHub Actions checks.
+5. Ensure your PR passes the GitHub Actions CI checks (`terraform fmt`, `terraform validate`).
 6. Reference any related issues in your PR description.
 
 ## Code Style

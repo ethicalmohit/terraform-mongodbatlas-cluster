@@ -12,48 +12,55 @@ resource "mongodbatlas_advanced_cluster" "this" {
       region_name   = var.region_name
 
       auto_scaling {
-        compute_enabled            = var.mongodb_atlas_config["compute_scaling_enabled"]
-        compute_max_instance_size  = null
-        compute_min_instance_size  = null
-        compute_scale_down_enabled = var.mongodb_atlas_config["compute_scale_down_enabled"]
-        disk_gb_enabled            = var.mongodb_atlas_config["disk_gb_scaling_enabled"]
+        compute_enabled            = var.mongodb_atlas_config.compute_scaling_enabled
+        compute_max_instance_size  = var.mongodb_atlas_config.compute_scaling_enabled ? var.mongodb_atlas_config.compute_max_instance_size : null
+        compute_min_instance_size  = var.mongodb_atlas_config.compute_scale_down_enabled ? var.mongodb_atlas_config.compute_min_instance_size : null
+        compute_scale_down_enabled = var.mongodb_atlas_config.compute_scale_down_enabled
+        disk_gb_enabled            = var.mongodb_atlas_config.disk_gb_scaling_enabled
       }
 
       electable_specs {
-        disk_iops       = 3000
-        ebs_volume_type = null
-        instance_size   = var.mongodb_atlas_config["instance_size"]
-        node_count      = 3
+        disk_iops       = var.mongodb_atlas_config.disk_iops
+        ebs_volume_type = var.mongodb_atlas_config.ebs_volume_type
+        instance_size   = var.mongodb_atlas_config.instance_size
+        node_count      = var.mongodb_atlas_config.node_count
       }
 
       analytics_specs {
-        disk_iops       = 3000
-        ebs_volume_type = null
-        instance_size   = var.mongodb_atlas_config["instance_size"]
+        disk_iops       = var.mongodb_atlas_config.disk_iops
+        ebs_volume_type = var.mongodb_atlas_config.ebs_volume_type
+        instance_size   = var.mongodb_atlas_config.instance_size
         node_count      = 0
       }
 
       read_only_specs {
-        disk_iops       = 3000
-        ebs_volume_type = null
-        instance_size   = var.mongodb_atlas_config["instance_size"]
+        disk_iops       = var.mongodb_atlas_config.disk_iops
+        ebs_volume_type = var.mongodb_atlas_config.ebs_volume_type
+        instance_size   = var.mongodb_atlas_config.instance_size
         node_count      = 0
       }
     }
   }
 
   lifecycle {
+    # When compute or disk auto-scaling is enabled, Atlas updates instance_size and
+    # disk_size_gb directly on the cluster. Ignoring these prevents Terraform from
+    # reverting Atlas-managed changes on the next plan/apply.
     ignore_changes = [
-      replication_specs[0].region_configs[0].read_only_specs[0].disk_size_gb,
-      replication_specs[0].region_configs[0].analytics_specs[0].disk_size_gb,
+      replication_specs[0].region_configs[0].electable_specs[0].instance_size,
       replication_specs[0].region_configs[0].electable_specs[0].disk_size_gb,
+      replication_specs[0].region_configs[0].analytics_specs[0].instance_size,
+      replication_specs[0].region_configs[0].analytics_specs[0].disk_size_gb,
+      replication_specs[0].region_configs[0].read_only_specs[0].instance_size,
+      replication_specs[0].region_configs[0].read_only_specs[0].disk_size_gb,
     ]
   }
 }
 
 resource "mongodbatlas_privatelink_endpoint" "this" {
+  count         = var.enable_privatelink ? 1 : 0
   project_id    = var.project_id
-  provider_name = "AWS"
+  provider_name = var.provider_name
   region        = var.region_code
 
   timeouts {
@@ -63,30 +70,40 @@ resource "mongodbatlas_privatelink_endpoint" "this" {
 }
 
 resource "mongodbatlas_privatelink_endpoint_service" "this" {
+  count               = var.enable_privatelink ? 1 : 0
   project_id          = var.project_id
-  private_link_id     = mongodbatlas_privatelink_endpoint.this.private_link_id
+  private_link_id     = mongodbatlas_privatelink_endpoint.this[0].private_link_id
   endpoint_service_id = var.endpoint_service_id
-  provider_name       = "AWS"
+  provider_name       = var.provider_name
 }
 
-# Backup policy as per compliance.
 resource "mongodbatlas_cloud_backup_schedule" "this" {
   count        = var.enable_backup ? 1 : 0
   project_id   = mongodbatlas_advanced_cluster.this.project_id
   cluster_name = mongodbatlas_advanced_cluster.this.name
 
-  reference_hour_of_day    = 0
-  reference_minute_of_hour = 0
-  restore_window_days      = 2
+  reference_hour_of_day    = var.backup_reference_hour_of_day
+  reference_minute_of_hour = var.backup_reference_minute_of_hour
+  restore_window_days      = var.restore_window_days
 
-  copy_settings {
-    cloud_provider = var.provider_name
-    frequencies = [
-      "WEEKLY",
-    ]
-    region_name        = var.backup_copy_region_name
-    should_copy_oplogs = false
-    zone_id            = mongodbatlas_advanced_cluster.this.replication_specs.*.zone_id[0]
+  dynamic "copy_settings" {
+    for_each = var.enable_backup_copy ? [1] : []
+    content {
+      cloud_provider     = var.provider_name
+      frequencies        = ["WEEKLY"]
+      region_name        = var.backup_copy_region_name
+      should_copy_oplogs = false
+      zone_id            = mongodbatlas_advanced_cluster.this.replication_specs.*.zone_id[0]
+    }
+  }
+
+  dynamic "policy_item_hourly" {
+    for_each = contains(keys(var.backup_policies), "hourly") ? [var.backup_policies["hourly"]] : []
+    content {
+      retention_value    = policy_item_hourly.value.retention_value
+      retention_unit     = policy_item_hourly.value.retention_unit
+      frequency_interval = policy_item_hourly.value.frequency_interval
+    }
   }
 
   dynamic "policy_item_daily" {
@@ -98,13 +115,21 @@ resource "mongodbatlas_cloud_backup_schedule" "this" {
     }
   }
 
-  dynamic "policy_item_hourly" {
-    for_each = contains(keys(var.backup_policies), "hourly") ? [var.backup_policies["hourly"]] : []
+  dynamic "policy_item_weekly" {
+    for_each = contains(keys(var.backup_policies), "weekly") ? [var.backup_policies["weekly"]] : []
     content {
-      retention_value    = try(policy_item_hourly.value.retention_value, null)
-      retention_unit     = try(policy_item_hourly.value.retention_unit, null)
-      frequency_interval = try(policy_item_hourly.value.frequency_interval, null)
+      retention_value    = policy_item_weekly.value.retention_value
+      retention_unit     = policy_item_weekly.value.retention_unit
+      frequency_interval = policy_item_weekly.value.frequency_interval
+    }
+  }
+
+  dynamic "policy_item_monthly" {
+    for_each = contains(keys(var.backup_policies), "monthly") ? [var.backup_policies["monthly"]] : []
+    content {
+      retention_value    = policy_item_monthly.value.retention_value
+      retention_unit     = policy_item_monthly.value.retention_unit
+      frequency_interval = policy_item_monthly.value.frequency_interval
     }
   }
 }
-
