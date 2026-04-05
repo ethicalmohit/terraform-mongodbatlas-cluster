@@ -15,7 +15,7 @@ variable "mongodb_version" {
 
   validation {
     condition     = contains(["6.0", "7.0", "8.0"], var.mongodb_version)
-    error_message = "mongodb_version must be one of: 6.0, 7.0, 8.0."
+    error_message = "Supported MongoDB versions are 6.0, 7.0, and 8.0."
   }
 }
 
@@ -26,7 +26,7 @@ variable "provider_name" {
 
   validation {
     condition     = contains(["AWS", "AZURE", "GCP"], var.provider_name)
-    error_message = "provider_name must be one of: AWS, AZURE, GCP."
+    error_message = "Supported cloud providers are AWS, AZURE, and GCP."
   }
 }
 
@@ -59,7 +59,7 @@ variable "mongodb_atlas_config" {
 
   validation {
     condition     = var.mongodb_atlas_config.node_count % 2 != 0
-    error_message = "node_count must be an odd number (3, 5, 7, ...) as required by MongoDB replica sets."
+    error_message = "Node count must be an odd number (3, 5, 7, ...) as required by MongoDB replica sets."
   }
 }
 
@@ -98,7 +98,7 @@ variable "backup_reference_hour_of_day" {
 
   validation {
     condition     = var.backup_reference_hour_of_day >= 0 && var.backup_reference_hour_of_day <= 23
-    error_message = "backup_reference_hour_of_day must be between 0 and 23."
+    error_message = "Backup reference hour must be between 0 and 23."
   }
 }
 
@@ -109,7 +109,7 @@ variable "backup_reference_minute_of_hour" {
 
   validation {
     condition     = var.backup_reference_minute_of_hour >= 0 && var.backup_reference_minute_of_hour <= 59
-    error_message = "backup_reference_minute_of_hour must be between 0 and 59."
+    error_message = "Backup reference minute must be between 0 and 59."
   }
 }
 
