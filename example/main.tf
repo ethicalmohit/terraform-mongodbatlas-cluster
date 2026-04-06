@@ -13,8 +13,10 @@ module "mongodb" {
   source = "../"
 
   # Required
-  project_id = var.project_id
-  name       = var.name
+  project_id                = var.project_id
+  name                      = var.name
+  mongodb_atlas_public_key  = var.mongodb_atlas_public_key
+  mongodb_atlas_private_key = var.mongodb_atlas_private_key
 
   # Optional — cloud provider and region
   mongodb_version = var.mongodb_version
