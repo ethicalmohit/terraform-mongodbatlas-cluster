@@ -125,6 +125,18 @@ variable "backup_copy_region_name" {
   default     = null
 }
 
+variable "mongodb_atlas_public_key" {
+  description = "The public key for the MongoDB Atlas API."
+  type        = string
+  sensitive   = true
+}
+
+variable "mongodb_atlas_private_key" {
+  description = "The private key for the MongoDB Atlas API."
+  type        = string
+  sensitive   = true
+}
+
 variable "backup_policies" {
   description = <<-EOT
     Map of backup policy items by frequency type. Supported keys: hourly, daily, weekly, monthly.
